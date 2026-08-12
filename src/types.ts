@@ -398,6 +398,7 @@ export interface TurnRequest {
   detectOpener?: string;
   attachments?: IncomingAttachment[];
   inboundNotes?: string[];
+  memoryPrincipalId?: string;
   model?: string;
   harness?: string;
   thinkingLevel?: string;

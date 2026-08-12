@@ -76,6 +76,27 @@ test("internal DM turn runs end-to-end and records the session", async () => {
   assert.deepEqual(types, ["user", "assistant"]);
 });
 
+test("a source-attested memory principal is recalled without changing turn authority", async () => {
+  const { app, memory, sessions } = freshApp();
+  await memory.replace(
+    scopeId("personal", "michel@example.test"),
+    "# Memory\n\n- Scout should answer CRM questions concisely.",
+  );
+
+  const withoutAlias = await app.turn(dm("!sysprompt", { conversation: { kind: "dm", threadRef: "dm:U1:no-alias" } }));
+  assert.doesNotMatch(withoutAlias.reply ?? "", /answer CRM questions concisely/);
+
+  const withAlias = await app.turn(
+    dm("!sysprompt", {
+      conversation: { kind: "dm", threadRef: "dm:U1:attested-memory" },
+      memoryPrincipalId: "michel@example.test",
+    }),
+  );
+  assert.equal(withAlias.status, "ok");
+  assert.match(withAlias.reply ?? "", /answer CRM questions concisely/);
+  assert.equal((await sessions.getByThread("dm:U1:attested-memory"))?.scopeId, scopeId("personal", "U1"));
+});
+
 test("org turn wall-clock governance reaches the harness and a per-turn cap only tightens", async () => {
   const { app, config } = freshApp();
   await config.setTurnWallClockSec(scopeId("org", "default-org"), 120);

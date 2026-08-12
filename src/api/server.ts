@@ -247,6 +247,21 @@ async function gate(
     return null;
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/v1/turns" &&
+    body !== null &&
+    typeof body === "object" &&
+    (body as { memoryPrincipalId?: unknown }).memoryPrincipalId !== undefined &&
+    (capability !== null || (body as { surface?: unknown }).surface !== "web")
+  ) {
+    sendJson(res, 403, {
+      error: "forbidden",
+      message: "memory principal aliases require a source-authenticated, attested web identity",
+    });
+    return null;
+  }
+
   let actor: PortalIdentity | null = null;
   if (!capability) {
     const psecret = deps.portalIdentitySecret ?? secret;
@@ -281,6 +296,16 @@ async function gate(
         if ((field && asserted !== actor.p) || (!field && asserted !== null && asserted !== actor.p)) {
           sendJson(res, 403, { error: "forbidden", message: "portal identity does not match the requested actor" });
           return null;
+        }
+        if (webTurn) {
+          const memoryPrincipalId = (body as { memoryPrincipalId?: unknown }).memoryPrincipalId;
+          if (memoryPrincipalId !== undefined && memoryPrincipalId !== actor.mem) {
+            sendJson(res, 403, {
+              error: "forbidden",
+              message: "portal identity does not attest the requested memory principal",
+            });
+            return null;
+          }
         }
       }
     }
