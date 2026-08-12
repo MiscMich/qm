@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { buildApp, type BuiltApp } from "../src/wiring.ts";
 import { createInsecureTestServer } from "../src/api/server.ts";
 import { mintSignedPayload } from "../src/auth/signed-token.ts";
-import { verifyCapabilityToken } from "../src/auth/capability-token.ts";
+import { mintCapabilityToken, verifyCapabilityToken } from "../src/auth/capability-token.ts";
 import { testConfig } from "./support/test-config.ts";
 import { scopeId } from "../src/types.ts";
 import { isUnclassifiedWrite } from "../src/api/user-scoped-routes.ts";
@@ -23,7 +23,11 @@ describe("user-scoped routes require a portal-verified actor when enforcement is
   let base: string;
   let built: BuiltApp;
 
-  const token = async (p: string, secret = PID) => mintSignedPayload({ p, exp: Date.now() + 60_000 }, secret);
+  const token = async (p: string, secret = PID, memoryPrincipalId?: string) =>
+    mintSignedPayload(
+      { p, exp: Date.now() + 60_000, ...(memoryPrincipalId ? { mem: memoryPrincipalId } : {}) },
+      secret,
+    );
 
   before(async () => {
     built = buildApp(testConfig({ dataDir: mkdtempSync(join(tmpdir(), "pid-gate-")) }));
@@ -273,6 +277,26 @@ describe("user-scoped routes require a portal-verified actor when enforcement is
     assert.equal(r.status, 403);
   });
 
+  it("a web turn may recall another principal only through its signed memory claim", async () => {
+    const body = {
+      surface: "web",
+      text: "hi",
+      actor: { externalId: "U1" },
+      conversation: { kind: "dm", threadRef: "web:U1:memory-alias" },
+      memoryPrincipalId: "michel@example.test",
+    };
+    assert.equal((await post("/v1/turns", body, { "x-portal-identity": await token("U1") })).status, 403);
+    assert.equal(
+      (await post("/v1/turns", body, { "x-portal-identity": await token("U1", PID, "other@example.test") })).status,
+      403,
+    );
+    const allowed = await post("/v1/turns", body, {
+      "x-portal-identity": await token("U1", PID, "michel@example.test"),
+    });
+    assert.notEqual(allowed.status, 401);
+    assert.notEqual(allowed.status, 403);
+  });
+
   it("a slack turn carries no portal identity and is not gated (different trust authority)", async () => {
     const r = await post("/v1/turns", {
       surface: "slack",
@@ -282,6 +306,36 @@ describe("user-scoped routes require a portal-verified actor when enforcement is
     });
     assert.notEqual(r.status, 401);
     assert.notEqual(r.status, 403);
+  });
+
+  it("a non-web turn cannot request another principal's memory", async () => {
+    const r = await post("/v1/turns", {
+      surface: "slack",
+      text: "hi",
+      actor: { externalId: "U9" },
+      conversation: { kind: "dm", threadRef: "t-memory-forgery" },
+      memoryPrincipalId: "michel@example.test",
+    });
+    assert.equal(r.status, 403);
+  });
+
+  it("a capability-authenticated turn cannot request another principal's memory", async () => {
+    const capability = await mintCapabilityToken(
+      { actorId: "U1", scopeId: scopeId("personal", "U1"), exp: Date.now() + 60_000 },
+      CAP,
+    );
+    const r = await post(
+      "/v1/turns",
+      {
+        surface: "web",
+        text: "hi",
+        actor: { externalId: "U1" },
+        conversation: { kind: "dm", threadRef: "web:U1:capability-memory-forgery" },
+        memoryPrincipalId: "michel@example.test",
+      },
+      { "x-agent-capability": capability },
+    );
+    assert.equal(r.status, 403);
   });
 
   it("an admin route with no portal identity is rejected (x-admin-actor alone no longer suffices)", async () => {

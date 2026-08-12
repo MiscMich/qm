@@ -236,6 +236,7 @@ export function createTurnMethods(
         ...(req.detectOpener ? { detectOpener: req.detectOpener } : {}),
         ...(req.attachments?.length ? { attachments: req.attachments } : {}),
         ...(req.inboundNotes?.length ? { inboundNotes: req.inboundNotes } : {}),
+        ...(req.memoryPrincipalId ? { memoryPrincipalId: req.memoryPrincipalId } : {}),
         ...(req.harness ? { harness: req.harness } : {}),
         ...(req.model ? { model: req.model } : {}),
         ...turnModelOptions(req),

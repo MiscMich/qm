@@ -755,6 +755,10 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
 
       const memoryScopeId = writableMemoryScope(resolution.layers, scopeId);
       const recallScopes = recallMemoryScopes(memoryPolicy, resolution.layers, memoryScopeId);
+      if (input.memoryPrincipalId) {
+        const attestedMemoryScope = personalScope(input.memoryPrincipalId);
+        if (!recallScopes.includes(attestedMemoryScope)) recallScopes.push(attestedMemoryScope);
+      }
       const memoryAccess =
         memoryPolicy.capture !== "off" || recallScopes.length > 0
           ? { ...(memoryPolicy.capture !== "off" ? { write: memoryScopeId } : {}), read: recallScopes }
